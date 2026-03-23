@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template_string
+from flask import Flask, request, jsonify
 import requests
 import time
 import logging
@@ -6,248 +6,155 @@ import hashlib
 import os
 import re
 from datetime import datetime
-from collections import deque
-from dotenv import load_dotenv
-
-# Load variables from .env file
-load_dotenv()
 
 # ══════════════════════════════════════════
 #  SETTINGS
 # ══════════════════════════════════════════
-# Auto-detect WA_BOT_URL: If local, use 127.0.0.1:5001, otherwise use public URL
-WA_BOT_URL = os.environ.get("WA_BOT_URL", "https://sms-tg-production.up.railway.app/send_code")
 
-SMS_FILTER_SENDER = os.environ.get("SMS_FILTER_SENDER", "3737")
+# Point this to your wa_bot Railway service URL
+# Example: https://wa-bot-production.up.railway.app/send_code
+WA_BOT_URL = os.environ.get("WA_BOT_URL", "https://YOUR-WA-BOT-URL.up.railway.app/send_code")
+
+SMS_FILTER_SENDER = "3737"  # Only forward SMS from this sender
+
+app = Flask(__name__)
+
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHAT_ID = os.environ.get("CHAT_ID")
 TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 
-app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Memory storage for the Dashboard (last 20 messages)
-history = deque(maxlen=20)
-recent_hashes = {}
+# ══════════════════════════════════════════
+#  DUPLICATE CHECK
+# ══════════════════════════════════════════
+recent_messages = {}
 
-# ══════════════════════════════════════════
-#  DASHBOARD TEMPLATE
-# ══════════════════════════════════════════
-DASHBOARD_HTML = """
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Skyline Bridge Dashboard</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f4f7f6; color: #333; margin: 0; padding: 20px; }
-        .container { max-width: 1000px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-        h1 { color: #2c3e50; border-bottom: 2px solid #eee; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
-        .status-badge { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase; }
-        .status-success { background: #d4edda; color: #155724; }
-        .status-ignored { background: #fff3cd; color: #856404; }
-        .status-error { background: #f8d7da; color: #721c24; }
-        .status-duplicate { background: #e2e3e5; color: #383d41; }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background: #f8f9fa; color: #666; }
-        pre { background: #f1f1f1; padding: 5px; border-radius: 4px; font-size: 11px; white-space: pre-wrap; max-width: 300px; }
-        .refresh-btn { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 6px; cursor: pointer; text-decoration: none; font-size: 14px; }
-        .refresh-btn:hover { background: #2980b9; }
-        .code-highlight { color: #e74c3c; font-weight: bold; font-family: monospace; font-size: 1.1em; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <h1>
-            <span>🚀 Skyline Bridge Logs</span>
-            <a href="/" class="refresh-btn">🔄 Refresh Dashboard</a>
-        </h1>
-        <p><strong>Configured Sender:</strong> <code style="background:#eee;padding:2px 5px">{{ filter_sender }}</code> | <strong>WA Bot:</strong> <code>{{ wa_url }}</code></p>
-        
-        <table>
-            <thead>
-                <tr>
-                    <th>Time</th>
-                    <th>From</th>
-                    <th>Message / Code</th>
-                    <th>Status</th>
-                    <th>Details</th>
-                </tr>
-            </thead>
-            <tbody>
-                {% for item in history %}
-                <tr>
-                    <td>{{ item.time }}</td>
-                    <td><strong>{{ item.sender }}</strong></td>
-                    <td>
-                        <div>{{ item.content }}</div>
-                        {% if item.code %}<div class="code-highlight">OTP: {{ item.code }}</div>{% endif %}
-                    </td>
-                    <td><span class="status-badge status-{{ item.status_class }}">{{ item.status }}</span></td>
-                    <td><pre>{{ item.debug }}</pre></td>
-                </tr>
-                {% else %}
-                <tr><td colspan="5" style="text-align:center;padding:40px;color:#999;">No messages received yet. Send an SMS to your modem!</td></tr>
-                {% endfor %}
-            </tbody>
-        </table>
-        
-        <div style="margin-top:30px; padding:15px; background:#e8f4fd; border-radius:8px; border-left:5px solid #3498db;">
-            <strong>💡 Testing Tip:</strong> To test the bridge without a modem, call: <br>
-            <code>/test</code> (Direct to WA) or use Postman to send a POST to <code>/sms</code>.
-        </div>
-    </div>
-</body>
-</html>
-"""
-
-# ══════════════════════════════════════════
-#  UTILS
-# ══════════════════════════════════════════
 def is_duplicate(sender, content):
     msg_hash = hashlib.md5(f"{sender}{content}".encode()).hexdigest()
     current_time = time.time()
-    if msg_hash in recent_hashes:
-        if current_time - recent_hashes[msg_hash] < 45: # 45 second duplicate window
+    if msg_hash in recent_messages:
+        if current_time - recent_messages[msg_hash] < 60:
             return True
-    recent_hashes[msg_hash] = current_time
+    recent_messages[msg_hash] = current_time
+    expired = [k for k, v in recent_messages.items() if current_time - v > 300]
+    for k in expired:
+        del recent_messages[k]
     return False
 
-def send_telegram(message):
-    if not TELEGRAM_TOKEN or not CHAT_ID: return
-    try:
-        requests.post(TELEGRAM_API, data={
-            'chat_id': CHAT_ID,
-            'text': message,
-            'parse_mode': 'HTML'
-        }, timeout=5)
-    except: pass
+# ══════════════════════════════════════════
+#  TELEGRAM SEND
+# ══════════════════════════════════════════
+def send_telegram(message, retries=3):
+    for attempt in range(retries):
+        try:
+            response = requests.post(TELEGRAM_API, data={
+                'chat_id': CHAT_ID,
+                'text': message,
+                'parse_mode': 'HTML',
+                'disable_web_page_preview': True
+            }, timeout=10)
+            if response.status_code == 200:
+                logger.info("✅ Telegram sent!")
+                return True
+            else:
+                logger.warning(f"⚠️ Telegram error: {response.text}")
+        except Exception as e:
+            logger.error(f"❌ Error: {e}")
+        time.sleep(2)
+    return False
 
 # ══════════════════════════════════════════
-#  ROUTES
+#  MAIN ROUTE
 # ══════════════════════════════════════════
-
-@app.route('/', methods=['GET'])
-def dashboard():
-    return render_template_string(
-        DASHBOARD_HTML, 
-        history=reversed(list(history)), 
-        filter_sender=SMS_FILTER_SENDER,
-        wa_url=WA_BOT_URL
-    )
-
 @app.route('/sms', methods=['POST', 'GET'])
 def receive_sms():
-    log_entry = {
-        "time": datetime.now().strftime('%H:%M:%S'),
-        "sender": "Unknown",
-        "content": "",
-        "code": None,
-        "status": "Processing",
-        "status_class": "ignored",
-        "debug": ""
-    }
-    
     try:
-        # Extract metadata from all possible sources (URL args, Form, JSON)
-        args = dict(request.args)
-        form = dict(request.form)
-        json_data = request.get_json(silent=True) or {}
-        raw_body = request.get_data(as_text=True)
-        
-        log_entry["debug"] = f"Args: {args}\nForm: {form}\nBody: {raw_body[:100]}"
-        
-        sender = args.get('sender') or form.get('sender') or json_data.get('sender') or 'Unknown'
-        receiver = args.get('receiver') or form.get('receiver') or 'Unknown'
-        log_entry["sender"] = sender
+        sender   = request.args.get('sender')   or 'Unknown'
+        receiver = request.args.get('receiver') or 'Unknown'
+        port     = request.args.get('port')     or 'N/A'
 
-        # Content extraction
-        content = args.get('message') or form.get('message') or json_data.get('message') or \
-                  args.get('content') or form.get('content') or ""
-        
-        if not content and raw_body:
-            # Try parsing raw formats often used by modems
-            if '\n\n' in raw_body:
-                content = raw_body.split('\n\n')[1].strip()
-            else:
-                content = raw_body.strip()
+        raw_data = request.get_data(as_text=True)
+        content  = "Empty Message"
 
-        log_entry["content"] = content
+        if '\n\n' in raw_data:
+            parts = raw_data.split('\n\n')
+            if len(parts) > 1:
+                content = parts[1].strip()
+        else:
+            lines = raw_data.strip().split('\n')
+            if lines:
+                content = lines[-1].strip()
 
-        # ── 1. VALIDATION ──
-        if not content:
-            log_entry["status"] = "EMTPY"
-            history.append(log_entry)
-            return jsonify({"status": "empty"}), 200
+        if "Sender:" in content or "SMSC:" in content:
+            content = raw_data
 
-        # ── 2. FILTER SENDER ──
-        if SMS_FILTER_SENDER and sender != SMS_FILTER_SENDER:
-            log_entry["status"] = f"IGNORED"
-            log_entry["debug"] += f"\nFilter: {SMS_FILTER_SENDER} != {sender}"
-            history.append(log_entry)
+        logger.info(f"🔍 DEBUG: Raw data received:\n{raw_data}")
+        logger.info(f"📩 SMS from {sender}: {content[:50]}...")
+
+        # Filter: Only process SMS from 3737
+        if sender != SMS_FILTER_SENDER:
+            logger.info(f"⏭️ Ignored SMS: Sender '{sender}' is not '{SMS_FILTER_SENDER}'")
             return jsonify({"status": "ignored"}), 200
 
-        # ── 3. DUPLICATE CHECK ──
+        # Duplicate check
         if is_duplicate(sender, content):
-            log_entry["status"] = "DUPLICATE"
-            log_entry["status_class"] = "duplicate"
-            history.append(log_entry)
+            logger.info(f"⏳ Duplicate message from {sender} - Skipping.")
             return jsonify({"status": "duplicate"}), 200
 
-        # ── 4. EXTRACT CODE ──
-        # Looks for 4-8 digit codes (inclusive)
-        code_match = re.search(r'\b(\d{4,8})\b', content)
+        # Extract 6-digit code
+        code_match = re.search(r'\b(\d{6})\b', content)
+
         if code_match:
             code = code_match.group(1)
-            log_entry["code"] = code
-            
-            # ── 5. FORWARD TO WHATSAPP ──
+            logger.info(f"🎯 DETECTED CODE: {code} — triggering WhatsApp...")
+
             try:
                 wa_resp = requests.post(
-                    WA_BOT_URL, 
-                    json={"code": code, "message": content, "sender": sender}, 
+                    WA_BOT_URL,
+                    json={"code": code, "message": content},
                     timeout=10
                 )
-                if wa_resp.status_code == 200:
-                    log_entry["status"] = "SENT ✅"
-                    log_entry["status_class"] = "success"
-                else:
-                    log_entry["status"] = f"WA ERR {wa_resp.status_code}"
-                    log_entry["status_class"] = "error"
-            except Exception as e:
-                log_entry["status"] = "WA BOT OFFLINE"
-                log_entry["status_class"] = "error"
-                log_entry["debug"] += f"\nWA Error: {str(e)}"
+                logger.info(f"🚀 wa_bot response: {wa_resp.status_code} - {wa_resp.text}")
+            except Exception as wa_err:
+                logger.error(f"❌ Could not reach wa_bot at {WA_BOT_URL}: {wa_err}")
         else:
-            log_entry["status"] = "NO CODE FOUND"
-            log_entry["debug"] += "\nRegex for 4-8 digits failed."
+            logger.warning(f"🤔 No 6-digit code found in: {content}")
 
-        # ── 6. TELEGRAM NOTIFY ──
-        tg_msg = f"📩 <b>SMS:</b> {sender}\n💬 {content}"
-        if log_entry["code"]: tg_msg += f"\n🎯 <b>CODE:</b> <code>{log_entry['code']}</code>"
-        send_telegram(tg_msg)
-
-        history.append(log_entry)
-        return jsonify({"status": "processed", "code": log_entry["code"]}), 200
+        # Send to Telegram
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        message = (
+            f"📩 <b>New SMS Received!</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"📱 <b>From:</b> <code>{sender}</code>\n"
+            f"📲 <b>To:</b> <code>{receiver}</code>\n"
+            f"📶 <b>Port:</b> {port}\n"
+            f"🕐 <b>Time:</b> {timestamp}\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"💬 <b>Message:</b>\n"
+            f"<code>{content}</code>"
+        )
+        send_telegram(message)
+        return jsonify({"status": "success"}), 200
 
     except Exception as e:
-        logger.error(f"Error: {e}")
-        log_entry["status"] = "CRASH"
-        log_entry["status_class"] = "error"
-        log_entry["debug"] += f"\nCrash: {str(e)}"
-        history.append(log_entry)
+        logger.error(f"❌ CRITICAL ERROR: {e}")
         return jsonify({"status": "error"}), 500
+
+@app.route('/', methods=['GET'])
+def status():
+    return "<h1>🟢 Skyline Bridge Running (Cloud Mode)</h1>"
 
 @app.route('/test', methods=['GET'])
 def test():
-    """Simple test route to verify WA bot connectivity"""
+    msg = "🧪 <b>Test!</b> Bridge is working."
+    send_telegram(msg)
     try:
-        wa_resp = requests.post(WA_BOT_URL, json={"code": "123456", "message": "TEST FROM DASHBOARD"}, timeout=5)
-        return f"Test sent to WA. Response: {wa_resp.text}", 200
+        requests.post(WA_BOT_URL, json={"code": "123456", "message": msg}, timeout=5)
     except Exception as e:
-        return f"WA Bot connection failed: {e}", 500
+        logger.warning(f"⚠️ wa_bot test failed: {e}")
+    return "OK - Sent to TG and WA!", 200
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))

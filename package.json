@@ -1,9 +1,8 @@
 {
   "name": "wa-cloud-bot",
   "version": "1.0.0",
-  "description": "WhatsApp Cloud Bot using Baileys with DB session persistence",
+  "description": "WhatsApp Cloud Bot using Baileys — runs 24/7 on Railway",
   "main": "wa_bot.js",
-  "type": "module",
   "scripts": {
     "start": "node wa_bot.js"
   },
@@ -12,8 +11,7 @@
     "express": "^4.18.2",
     "body-parser": "^1.20.2",
     "pino": "^8.21.0",
-    "pg": "^8.11.3",
-    "dotenv": "^16.4.5"
+    "qrcode": "^1.5.3"
   },
   "engines": {
     "node": ">=18.0.0"
