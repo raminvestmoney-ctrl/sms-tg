@@ -1,0 +1,6 @@
+.env
+auth_info_baileys
+node_modules
+__pycache__
+*.pyc
+wa_session
