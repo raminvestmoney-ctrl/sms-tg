@@ -1,161 +1,257 @@
-from flask import Flask, request, jsonify
-import requests
-import time
-import logging
-import hashlib
+"""
+Skyline GoIP — SIM Number Fetcher Bot
+══════════════════════════════════════
+How to use:
+  1. Send /fetch in Telegram → bot starts listening
+  2. In modem panel, send MNP to correct shortcode per port:
+       Ufone   → MNP to 667
+       Jazz    → MNP to 7000
+       Zong    → MNP to 310
+       Telenor → MNP to 7421
+  3. Carrier replies come in → modem forwards to this bot
+  4. Send /send in Telegram → get full clean list
+  5. Send /clear to reset and start fresh
+
+Railway variables needed:
+  BOT_TOKEN, ALLOWED_CHAT_ID, WEBHOOK_URL, TOTAL_PORTS
+"""
+
 import os
 import re
-from datetime import datetime
+import threading
+import requests
+from flask import Flask, request, jsonify
+from dotenv import load_dotenv
 
-# ══════════════════════════════════════════
-#  SETTINGS
-# ══════════════════════════════════════════
-
-# Point this to your wa_bot Railway service URL
-# Example: https://wa-bot-production.up.railway.app/send_code
-WA_BOT_URL = os.environ.get("WA_BOT_URL", "https://YOUR-WA-BOT-URL.up.railway.app/send_code")
-
-SMS_FILTER_SENDER = "3737"  # Only forward SMS from this sender
+load_dotenv()
 
 app = Flask(__name__)
 
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-CHAT_ID = os.environ.get("CHAT_ID")
-TELEGRAM_API = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+# ── Config ─────────────────────────────────────────────────────
+BOT_TOKEN   = os.getenv("BOT_TOKEN")
+ALLOWED_ID  = int(os.getenv("ALLOWED_CHAT_ID", "0"))
+WEBHOOK_URL = os.getenv("WEBHOOK_URL", "")
+TOTAL_PORTS = int(os.getenv("TOTAL_PORTS", "32"))
+# ───────────────────────────────────────────────────────────────
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+TG_API   = f"https://api.telegram.org/bot{BOT_TOKEN}"
+lock     = threading.Lock()
+collected = []   # [{ "port": "1", "number": "03xxxxxxxxx" }]
+listening = False
 
-# ══════════════════════════════════════════
-#  DUPLICATE CHECK
-# ══════════════════════════════════════════
-recent_messages = {}
+# ── Carrier SMS reply patterns ──────────────────────────────────
+# Each carrier replies differently — we try all patterns
+CARRIER_PATTERNS = [
+    # Ufone: "Your Mobile Number is 0333xxxxxxx"
+    r'(?:your\s+(?:mobile\s+)?(?:number|no\.?)\s+is\s*:?\s*)(\+?92\d{10}|0\d{10})',
+    # Jazz: "Your Jazz number is 03xxxxxxxxx"
+    r'(?:your\s+jazz\s+(?:number|no\.?)\s+is\s*:?\s*)(\+?92\d{10}|0\d{10})',
+    # Zong: "Your number is 031xxxxxxxx"
+    r'(?:your\s+(?:zong\s+)?(?:number|no\.?)\s+is\s*:?\s*)(\+?92\d{10}|0\d{10})',
+    # Telenor: "Aapka number 034xxxxxxxx hai"
+    r'(?:aapka\s+(?:telenor\s+)?number\s+)(\+?92\d{10}|0\d{10})',
+    # Generic fallback: any Pakistani number in the SMS
+    r'(\+92\d{10})',
+    r'(92\d{10})',
+    r'(0[3]\d{9})',
+]
 
-def is_duplicate(sender, content):
-    msg_hash = hashlib.md5(f"{sender}{content}".encode()).hexdigest()
-    current_time = time.time()
-    if msg_hash in recent_messages:
-        if current_time - recent_messages[msg_hash] < 60:
-            return True
-    recent_messages[msg_hash] = current_time
-    expired = [k for k, v in recent_messages.items() if current_time - v > 300]
-    for k in expired:
-        del recent_messages[k]
-    return False
+# ── Normalize number ────────────────────────────────────────────
 
-# ══════════════════════════════════════════
-#  TELEGRAM SEND
-# ══════════════════════════════════════════
-def send_telegram(message, retries=3):
-    for attempt in range(retries):
-        try:
-            response = requests.post(TELEGRAM_API, data={
-                'chat_id': CHAT_ID,
-                'text': message,
-                'parse_mode': 'HTML',
-                'disable_web_page_preview': True
-            }, timeout=10)
-            if response.status_code == 200:
-                logger.info("✅ Telegram sent!")
-                return True
-            else:
-                logger.warning(f"⚠️ Telegram error: {response.text}")
-        except Exception as e:
-            logger.error(f"❌ Error: {e}")
-        time.sleep(2)
-    return False
+def normalize(number):
+    """Convert any format to 0xxxxxxxxxx"""
+    number = re.sub(r'[\s\-]', '', str(number))
+    if number.startswith('+92'):
+        number = '0' + number[3:]
+    elif number.startswith('92') and len(number) == 12:
+        number = '0' + number[2:]
+    elif len(number) == 10 and number.startswith('3'):
+        number = '0' + number
+    return number
 
-# ══════════════════════════════════════════
-#  MAIN ROUTE
-# ══════════════════════════════════════════
-@app.route('/sms', methods=['POST', 'GET'])
-def receive_sms():
-    try:
-        sender   = request.args.get('sender')   or 'Unknown'
-        receiver = request.args.get('receiver') or 'Unknown'
-        port     = request.args.get('port')     or 'N/A'
+def extract_number(text):
+    """Try all carrier patterns to extract number from SMS reply."""
+    for pattern in CARRIER_PATTERNS:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            return normalize(match.group(1))
+    return None
 
-        raw_data = request.get_data(as_text=True)
-        content  = "Empty Message"
+# ── Telegram ────────────────────────────────────────────────────
 
-        if '\n\n' in raw_data:
-            parts = raw_data.split('\n\n')
-            if len(parts) > 1:
-                content = parts[1].strip()
-        else:
-            lines = raw_data.strip().split('\n')
-            if lines:
-                content = lines[-1].strip()
+def send_msg(chat_id, text, parse_mode="Markdown"):
+    requests.post(f"{TG_API}/sendMessage", json={
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": parse_mode
+    })
 
-        if "Sender:" in content or "SMSC:" in content:
-            content = raw_data
+def set_commands():
+    requests.post(f"{TG_API}/setMyCommands", json={"commands": [
+        {"command": "fetch",  "description": "📡 Start collecting SIM numbers"},
+        {"command": "send",   "description": "📤 Send full number list"},
+        {"command": "status", "description": "ℹ️ Numbers collected so far"},
+        {"command": "clear",  "description": "🗑 Clear list and reset"},
+    ]})
 
-        logger.info(f"🔍 DEBUG: Raw data received:\n{raw_data}")
-        logger.info(f"📩 SMS from {sender}: {content[:50]}...")
+def set_webhook():
+    if WEBHOOK_URL:
+        r = requests.post(f"{TG_API}/setWebhook", json={"url": f"{WEBHOOK_URL}/webhook"})
+        print(f"[Webhook] {r.json()}")
 
-        # Filter: Only process SMS from 3737
-        if sender != SMS_FILTER_SENDER:
-            logger.info(f"⏭️ Ignored SMS: Sender '{sender}' is not '{SMS_FILTER_SENDER}'")
-            return jsonify({"status": "ignored"}), 200
+# ── Commands ────────────────────────────────────────────────────
 
-        # Duplicate check
-        if is_duplicate(sender, content):
-            logger.info(f"⏳ Duplicate message from {sender} - Skipping.")
-            return jsonify({"status": "duplicate"}), 200
+def cmd_fetch(chat_id):
+    global listening
+    with lock:
+        listening = True
+    send_msg(chat_id,
+        "✅ *Listening for SIM numbers!*\n\n"
+        "Now go to modem panel and trigger an SMS (e.g., MNP check).\n"
+        "The bot will automatically grab the SIM number from the metadata.\n\n"
+        "Send /status to check progress.\n"
+        "Send /send when done."
+    )
 
-        # Extract 6-digit code
-        code_match = re.search(r'\b(\d{6})\b', content)
+def cmd_send(chat_id):
+    with lock:
+        data = list(collected)
 
-        if code_match:
-            code = code_match.group(1)
-            logger.info(f"🎯 DETECTED CODE: {code} — triggering WhatsApp...")
-
-            try:
-                wa_resp = requests.post(
-                    WA_BOT_URL,
-                    json={"code": code, "message": content},
-                    timeout=10
-                )
-                logger.info(f"🚀 wa_bot response: {wa_resp.status_code} - {wa_resp.text}")
-            except Exception as wa_err:
-                logger.error(f"❌ Could not reach wa_bot at {WA_BOT_URL}: {wa_err}")
-        else:
-            logger.warning(f"🤔 No 6-digit code found in: {content}")
-
-        # Send to Telegram
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        message = (
-            f"📩 <b>New SMS Received!</b>\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"📱 <b>From:</b> <code>{sender}</code>\n"
-            f"📲 <b>To:</b> <code>{receiver}</code>\n"
-            f"📶 <b>Port:</b> {port}\n"
-            f"🕐 <b>Time:</b> {timestamp}\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"💬 <b>Message:</b>\n"
-            f"<code>{content}</code>"
+    if not data:
+        send_msg(chat_id,
+            "📭 No numbers collected yet.\n"
+            "Send /fetch then trigger SMS from modem panel."
         )
-        send_telegram(message)
-        return jsonify({"status": "success"}), 200
+        return
 
-    except Exception as e:
-        logger.error(f"❌ CRITICAL ERROR: {e}")
-        return jsonify({"status": "error"}), 500
+    # Clean format: port | number, line by line
+    lines = [f"Port {e['port']} | {e['number']}" for e in data]
+    full  = "\n".join(lines)
 
-@app.route('/', methods=['GET'])
-def status():
-    return "<h1>🟢 Skyline Bridge Running (Cloud Mode)</h1>"
+    for i in range(0, len(full), 4000):
+        send_msg(chat_id, f"`{full[i:i+4000]}`")
 
-@app.route('/test', methods=['GET'])
-def test():
-    msg = "🧪 <b>Test!</b> Bridge is working."
-    send_telegram(msg)
-    try:
-        requests.post(WA_BOT_URL, json={"code": "123456", "message": msg}, timeout=5)
-    except Exception as e:
-        logger.warning(f"⚠️ wa_bot test failed: {e}")
-    return "OK - Sent to TG and WA!", 200
+    send_msg(chat_id, f"✅ *{len(data)}* numbers total.")
 
-if __name__ == '__main__':
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+def cmd_status(chat_id):
+    with lock:
+        count = len(collected)
+        state = listening
+    send_msg(chat_id,
+        f"🔄 Listening: *{'Yes' if state else 'No'}*\n"
+        f"📱 Collected: *{count}* numbers\n\n"
+        f"Send /send to get the list."
+    )
+
+def cmd_clear(chat_id):
+    global listening
+    with lock:
+        collected.clear()
+        listening = False
+    send_msg(chat_id, "🗑 Cleared! Send /fetch to start fresh.")
+
+# ── SMS Receiver ────────────────────────────────────────────────
+
+@app.route("/sms", methods=["GET", "POST"])
+def receive_sms():
+    if not listening:
+        return jsonify(ok=True)
+
+    data = request.args if request.method == "GET" else (request.form or request.args)
+
+    port = (data.get("port") or data.get("line") or
+            data.get("channel") or "?")
+    text = (data.get("text") or data.get("msg") or
+            data.get("message") or data.get("sms") or "")
+    
+    # NEW: Priority field from your modem logic
+    receiver_num = data.get("receiver") or data.get("to") or data.get("dest")
+
+    # Try JSON body payload
+    if not text and not receiver_num:
+        try:
+            body = request.get_json(force=True) or {}
+            port = body.get("port", port)
+            text = body.get("text") or body.get("msg") or body.get("message") or ""
+            receiver_num = body.get("receiver") or body.get("to") or body.get("dest")
+        except Exception:
+            pass
+
+    print(f"[SMS] Port={port} | Receiver={receiver_num} | Text={text}")
+
+    number = None
+    
+    # 1. OPTION A: Extract from 'receiver' metadata (Most reliable)
+    if receiver_num and any(char.isdigit() for char in str(receiver_num)):
+        potential = normalize(str(receiver_num))
+        if len(potential) == 11 and potential.startswith("03"):
+            number = potential
+            print(f"[Match] Found in metadata: {number}")
+
+    # 2. OPTION B: Extract from text (Carrier reply backup)
+    if not number:
+        number = extract_number(text)
+        if number:
+            print(f"[Match] Found in text: {number}")
+
+    if not number:
+        return jsonify(ok=True)
+
+    with lock:
+        # Check if number already in list
+        existing = [e["number"] for e in collected]
+        if number not in existing:
+            collected.append({"port": str(port), "number": number})
+            print(f"[Added] Port {port} → {number} (Total: {len(collected)})")
+        else:
+            # Update port if it changed but number is same
+            for item in collected:
+                if item["number"] == number:
+                    item["port"] = str(port)
+            print(f"[Update] Updated port for {number}")
+
+    return jsonify(ok=True)
+
+# ── Telegram Webhook ────────────────────────────────────────────
+
+@app.route("/webhook", methods=["POST"])
+def telegram_webhook():
+    data = request.json
+    if not data or "message" not in data:
+        return jsonify(ok=True)
+
+    msg     = data["message"]
+    chat_id = msg["chat"]["id"]
+    text    = msg.get("text", "").strip()
+
+    if ALLOWED_ID and chat_id != ALLOWED_ID:
+        send_msg(chat_id, "⛔ Unauthorized.")
+        return jsonify(ok=True)
+
+    cmd = text.split()[0].lower().lstrip("/").split("@")[0]
+
+    if   cmd == "fetch":  cmd_fetch(chat_id)
+    elif cmd == "send":   cmd_send(chat_id)
+    elif cmd == "status": cmd_status(chat_id)
+    elif cmd == "clear":  cmd_clear(chat_id)
+    else:
+        send_msg(chat_id,
+            "/fetch — Start listening\n"
+            "/send — Get number list\n"
+            "/status — Check progress\n"
+            "/clear — Reset"
+        )
+
+    return jsonify(ok=True)
+
+@app.route("/", methods=["GET"])
+def index():
+    return "✅ SIM Bot running with Metadata support."
+
+# ── Startup ─────────────────────────────────────────────────────
+
+if __name__ == "__main__":
+    set_webhook()
+    set_commands()
+    port = int(os.getenv("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
