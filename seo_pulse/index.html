@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEO Pulse | Mission Control Dashboard</title>
+    <meta name="description" content="Professional SEO Health & Performance Monitoring Dashboard.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=Outfit:wght@600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body class="dark-mode">
+    <div class="dashboard-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar glass">
+            <div class="logo">SEO<span>PULSE</span></div>
+            <nav>
+                <a href="#" class="active"><i class="icon">📊</i> Dashboard</a>
+                <a href="#"><i class="icon">🔍</i> SEO Audits</a>
+                <a href="#"><i class="icon">📈</i> Rank Tracker</a>
+                <a href="#"><i class="icon">⚡</i> Uptime</a>
+                <a href="#"><i class="icon">🔗</i> Backlinks</a>
+            </nav>
+            <div class="sidebar-footer">
+                <div class="user-card glass">
+                    <div class="avatar">👨‍💻</div>
+                    <div class="user-info">
+                        <span class="name">Admin User</span>
+                        <span class="plan">Pro Plan</span>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="content">
+            <header class="top-bar">
+                <div class="search-bar glass">
+                    <input type="text" placeholder="Search domain...">
+                </div>
+                <div class="actions">
+                    <button class="notification-btn glass">🔔</button>
+                    <button class="primary-btn">Analyze New Site</button>
+                </div>
+            </header>
+
+            <div class="dashboard-grid">
+                <!-- SEO Score Card -->
+                <div class="card score-card glass">
+                    <h3>SEO Health Score</h3>
+                    <div class="gauge-container">
+                        <svg viewBox="0 0 36 36" class="circular-chart blue">
+                            <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                            <path class="circle" stroke-dasharray="92, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                            <text x="18" y="20.35" class="percentage">92</text>
+                        </svg>
+                    </div>
+                    <p class="status success">Excellent Performance</p>
+                </div>
+
+                <!-- Pulse Chart -->
+                <div class="card pulse-card glass">
+                    <h3>Real-time Performance Pulse</h3>
+                    <div class="chart-container">
+                        <canvas id="pulseChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Core Web Vitals -->
+                <div class="card vitals-card glass">
+                    <h3>Core Web Vitals</h3>
+                    <div class="vitals-grid">
+                        <div class="vital-item">
+                            <span class="label">LCP</span>
+                            <span class="value">1.2s</span>
+                            <span class="status good">Good</span>
+                        </div>
+                        <div class="vital-item">
+                            <span class="label">FID</span>
+                            <span class="value">12ms</span>
+                            <span class="status good">Good</span>
+                        </div>
+                        <div class="vital-item">
+                            <span class="label">CLS</span>
+                            <span class="value">0.01</span>
+                            <span class="status good">Good</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Issues -->
+                <div class="card issues-card glass">
+                    <h3>Optimization Required</h3>
+                    <div class="issues-list">
+                        <!-- Dynamic Issues -->
+                    </div>
+                    <div class="report-action" style="margin-top: 20px;">
+                        <a id="download-pdf" target="_blank" href="#" class="primary-btn" style="display: none; text-decoration: none; font-size: 14px;">📄 Download PDF Report</a>
+                    </div>
+                </div>
+
+                <!-- Device Preview -->
+                <div class="card preview-card glass" style="grid-column: span 3;">
+                    <h3>Device Previews</h3>
+                    <div class="preview-grid" style="display: flex; gap: 24px; align-items: flex-start; justify-content: center;">
+                        <div class="preview-item desktop" style="flex: 2;">
+                            <span class="label">Desktop Preview</span>
+                            <div class="img-frame glass" style="margin-top: 10px; overflow: hidden; height: 400px; border-radius: 8px;">
+                                <img id="desktop-img" src="" style="width: 100%; height: auto;">
+                            </div>
+                        </div>
+                        <div class="preview-item mobile" style="flex: 1;">
+                            <span class="label">Mobile (iPhone)</span>
+                            <div class="img-frame glass" style="margin-top: 10px; overflow: hidden; height: 400px; width: 200px; border-radius: 20px; border: 4px solid #111;">
+                                <img id="mobile-img" src="" style="width: 100%; height: auto;">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+        </main>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>

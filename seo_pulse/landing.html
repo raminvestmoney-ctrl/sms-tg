@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SEO Pulse | Enterprise Stress Testing & Performance</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="landing.css">
+</head>
+<body>
+    <!-- Navbar -->
+    <nav class="navbar glass">
+        <div class="container">
+            <div class="logo">SEO<span>PULSE</span></div>
+            <div class="nav-links">
+                <a href="#features">Features</a>
+                <a href="#pricing">Pricing</a>
+                <a href="index.html" class="nav-btn primary-btn">Launch Dashboard</a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <header class="hero">
+        <div class="container">
+            <div class="hero-content">
+                <span class="badge">V2.0 Live Engine</span>
+                <h1>Scale Beyond Limits. <br><span>Test Your SEO Pulse.</span></h1>
+                <p>The world's most advanced site performance & stress testing engine. Simulate thousands of global users with 100% human-like behavior.</p>
+                <div class="hero-actions">
+                    <a href="index.html" class="primary-btn glow">Start Free Audit</a>
+                    <a href="#pricing" class="secondary-btn glass">View Pricing</a>
+                </div>
+            </div>
+            <div class="hero-visual">
+                <div class="pulse-core">
+                    <div class="core-ring"></div>
+                    <div class="core-ring"></div>
+                    <div class="core-ring"></div>
+                </div>
+                <div class="nodes">
+                    <div class="node n1"></div>
+                    <div class="node n2"></div>
+                    <div class="node n3"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Live Status Bar -->
+        <div class="live-status-bar glass container">
+            <div class="status-item">
+                <span class="label">Live Active Nodes</span>
+                <span class="value" id="node-count">2,481</span>
+            </div>
+            <div class="status-divider"></div>
+            <div class="status-item">
+                <span class="label">Data Pulses / Min</span>
+                <span class="value" id="pulse-count">14,209</span>
+            </div>
+            <div class="status-divider"></div>
+            <div class="status-item">
+                <span class="label">System Load</span>
+                <span class="value success">Optimal</span>
+            </div>
+        </div>
+    </header>
+
+    <!-- Pricing Section -->
+    <section id="pricing" class="pricing">
+        <div class="container">
+            <div class="section-header">
+                <h2>Choose Your <span>Power</span></h2>
+                <p>Simple, transparent pricing for developers and webmasters.</p>
+            </div>
+            <div class="pricing-grid">
+                <!-- Free -->
+                <div class="price-card glass">
+                    <h3>Free Audit</h3>
+                    <div class="amount">$0</div>
+                    <ul>
+                        <li>Full SEO Health Check</li>
+                        <li>Meta Tag Analysis</li>
+                        <li>Desktop Screenshots</li>
+                        <li>Basic Performance Report</li>
+                    </ul>
+                    <a href="index.html" class="secondary-btn glass">Analyze Now</a>
+                </div>
+
+                <!-- Pulse 100 -->
+                <div class="price-card glass popular">
+                    <div class="popular-tag">MOST POPULAR</div>
+                    <h3>Pulse 100</h3>
+                    <div class="amount">$3<span>/test</span></div>
+                    <ul>
+                        <li>100 Simulated Users</li>
+                        <li>Mobile + Desktop Previews</li>
+                        <li>High-Speed Stealth Proxy</li>
+                        <li>Priority PDF Report</li>
+                    </ul>
+                    <a href="index.html" class="primary-btn glow">Get Started</a>
+                </div>
+
+                <!-- Enterprise 1000 -->
+                <div class="price-card glass">
+                    <h3>Enterprise 1000</h3>
+                    <div class="amount">$15<span>/test</span></div>
+                    <ul>
+                        <li>1,000 Simulated Users</li>
+                        <li>Global Node Distribution</li>
+                        <li>Core Web Vitals Audit</li>
+                        <li>White-label PDF Reports</li>
+                    </ul>
+                    <a href="index.html" class="secondary-btn glass">Go Enterprise</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="container">
+            <div class="footer-content">
+                <div class="logo">SEO<span>PULSE</span></div>
+                <p>© 2026 SEO Pulse Engine. Built for the future of the web.</p>
+            </div>
+        </div>
+    </footer>
+    <script>
+        // Live Counter Animation
+        function animateCounter(id, start, end, duration) {
+            let obj = document.getElementById(id);
+            let current = start;
+            let range = end - start;
+            let increment = end > start ? 1 : -1;
+            let stepTime = Math.abs(Math.floor(duration / range));
+            let timer = setInterval(function() {
+                current += increment;
+                obj.innerText = current.toLocaleString();
+                if (current == end) {
+                    clearInterval(timer);
+                }
+            }, stepTime);
+        }
+
+        // Random Pulse Simulation
+        setInterval(() => {
+            const nodeObj = document.getElementById('node-count');
+            const pulseObj = document.getElementById('pulse-count');
+            
+            let nodes = parseInt(nodeObj.innerText.replace(/,/g, ''));
+            let pulses = parseInt(pulseObj.innerText.replace(/,/g, ''));
+            
+            nodeObj.innerText = (nodes + (Math.random() > 0.5 ? 1 : -1)).toLocaleString();
+            pulseObj.innerText = (pulses + Math.floor(Math.random() * 50)).toLocaleString();
+        }, 2000);
+    </script>
+</body>
+</html>

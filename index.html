@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Exam Pro | Generate MCQs from Notes</title>
+    <meta name="description" content="A revolutionary AI-powered exam system where students upload notes to generate instant, high-quality MCQ tests.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="app">
+        <!-- Main Navigation -->
+        <nav class="navbar">
+            <div class="logo">AI EXAM<span>PRO</span></div>
+            <div class="nav-links">
+                <a href="#" class="active">Student Portal</a>
+                <a href="#">Teacher Backend</a>
+            </div>
+        </nav>
+
+        <!-- Landing / Upload Section -->
+        <section id="landing" class="screen">
+            <div class="hero-content">
+                <h1>Transform Your Notes into <span class="gradient-text">Instant Exams</span></h1>
+                <p>Upload your physics, chemistry, or math notes and our AI will generate 50 challenging MCQs to test your knowledge.</p>
+                
+                <div class="upload-container glass">
+                    <input type="file" id="note-upload" accept="image/*" multiple hidden>
+                    <label for="note-upload" class="upload-box">
+                        <div class="upload-icon">📸</div>
+                        <p>Click to upload notes or drag and drop images here</p>
+                        <span class="file-info">Supports JPG, PNG, WEBP</span>
+                    </label>
+                    <div id="file-list" class="file-preview-grid"></div>
+                    <button id="generate-btn" class="primary-btn pulse-on-hover" disabled>
+                        <span>Generate 50 MCQs</span>
+                        <div class="btn-shine"></div>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Processing Section -->
+        <section id="processing" class="screen hidden">
+            <div class="loader-container glass">
+                <div class="ai-brain-loader">
+                    <div class="brain-ripple"></div>
+                    <div class="brain-ripple"></div>
+                    <div class="brain-ripple"></div>
+                    <div class="brain-icon">🧠</div>
+                </div>
+                <h2>AI is analyzing your notes...</h2>
+                <div class="progress-bar-container">
+                    <div id="ai-progress" class="progress-bar"></div>
+                </div>
+                <p id="status-text">Extracting text from images...</p>
+                <div class="status-logs">
+                    <div class="log-line active" id="log-1">Scanning Physics formulas...</div>
+                    <div class="log-line" id="log-2">Identifying key concepts...</div>
+                    <div class="log-line" id="log-3">Drafting challenging distractors...</div>
+                    <div class="log-line" id="log-4">Finalizing 50 MCQs...</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Exam Section -->
+        <section id="exam" class="screen hidden">
+            <header class="exam-header glass">
+                <div class="exam-info">
+                    <h3 id="current-subject">Physics: Mechanics & Waves</h3>
+                    <div class="timer" id="timer">60:00</div>
+                </div>
+                <div class="exam-progress">
+                    <span id="question-counter">Question 1/50</span>
+                    <div class="progress-track">
+                        <div id="exam-progress-bar" class="progress-fill"></div>
+                    </div>
+                </div>
+            </header>
+
+            <main class="question-container glass">
+                <div id="question-text" class="question-text">
+                    What is the dimensional formula for gravitational constant (G)?
+                </div>
+                <div class="options-grid" id="options-grid">
+                    <!-- Options will be injected here -->
+                </div>
+            </main>
+
+            <footer class="exam-footer">
+                <button id="prev-btn" class="secondary-btn">Previous</button>
+                <div class="exam-nav-dots" id="nav-dots"></div>
+                <button id="next-btn" class="primary-btn">Next Question</button>
+                <button id="submit-btn" class="submit-btn hidden">Submit Exam</button>
+            </footer>
+        </section>
+
+        <!-- Result Section -->
+        <section id="result" class="screen hidden">
+            <div class="result-card glass">
+                <div class="confetti-container" id="confetti"></div>
+                <div class="result-header">
+                    <div class="score-circle">
+                        <svg viewBox="0 0 36 36" class="circular-chart">
+                            <path class="circle-bg" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                            <path id="score-circle-fill" class="circle" stroke-dasharray="0, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" />
+                            <text x="18" y="20.35" class="percentage" id="score-percentage">0%</text>
+                        </svg>
+                    </div>
+                    <h1>Test Completed!</h1>
+                    <p id="result-message">Excellent performance! You've mastered these concepts.</p>
+                </div>
+                
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="label">Total Score</span>
+                        <span class="value" id="final-score">0/50</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="label">Time Taken</span>
+                        <span class="value" id="time-taken">00:00</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="label">Accuracy</span>
+                        <span class="value" id="accuracy-rate">0%</span>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button class="primary-btn" onclick="location.reload()">Start New Test</button>
+                    <button class="secondary-btn" id="review-btn">Review Answers</button>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <script src="main.js" type="module"></script>
+</body>
+</html>

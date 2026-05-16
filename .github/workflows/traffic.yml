@@ -1,0 +1,37 @@
+name: Daily Traffic Boost
+
+on:
+  schedule:
+    # Runs every 30 minutes
+    - cron: '*/30 * * * *'
+  workflow_dispatch:
+    # Allows manual trigger from GitHub UI
+
+jobs:
+  traffic-job:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Install Playwright Browsers
+      run: |
+        python -m playwright install chromium
+        python -m playwright install-deps chromium
+
+    - name: Run Traffic Loader
+      run: python advanced_traffic_loader.py
+      env:
+        # We can tell the script it's running in CI mode
+        CI_MODE: "true"
