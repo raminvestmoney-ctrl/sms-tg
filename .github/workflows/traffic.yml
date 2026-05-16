@@ -30,22 +30,17 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r requirements.txt
+        pip install playwright==1.41.0 playwright-stealth==1.0.6 aiohttp==3.9.3 flask requests gunicorn
 
-    - name: Install Playwright Browsers
+    - name: Install Playwright Chromium
       run: |
-        python -m playwright install chromium
-        sudo python -m playwright install-deps chromium
-
-    - name: Debug Info
-      run: |
-        python --version
-        pip list
-        ls -la
+        python -m playwright install --with-deps chromium
 
     - name: Run Traffic Loader
       run: python3 advanced_traffic_loader.py
       env:
         CI_MODE: "true"
+        PYTHONUNBUFFERED: "1"
+
 
 

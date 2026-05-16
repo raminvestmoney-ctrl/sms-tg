@@ -111,16 +111,24 @@ async def run_session(proxy_str, limit):
         async with async_playwright() as p:
             browser = None
             try:
-                # Use a shorter timeout for browser launch to avoid hanging
-                browser = await p.chromium.launch(
-                    headless=True, 
-                    proxy={"server": proxy_str},
-                    args=["--disable-blink-features=AutomationControlled"]
-                )
+                # Retry logic for browser launch
+                for attempt in range(3):
+                    try:
+                        browser = await p.chromium.launch(
+                            headless=True, 
+                            proxy={"server": proxy_str},
+                            args=["--disable-blink-features=AutomationControlled", "--no-sandbox", "--disable-setuid-sandbox"]
+                        )
+                        if browser: break
+                    except Exception as launch_err:
+                        if attempt == 2: raise launch_err
+                        await asyncio.sleep(2)
+
                 context = await browser.new_context(
                     **get_stealth_config(), 
                     extra_http_headers={"Referer": referrer}
                 )
+
                 page = await context.new_page()
                 await stealth_async(page)
                 
