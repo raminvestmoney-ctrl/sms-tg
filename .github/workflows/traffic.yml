@@ -35,10 +35,17 @@ jobs:
     - name: Install Playwright Browsers
       run: |
         python -m playwright install chromium
-        python -m playwright install-deps chromium
+        sudo python -m playwright install-deps chromium
+
+    - name: Debug Info
+      run: |
+        python --version
+        pip list
+        ls -la
 
     - name: Run Traffic Loader
-      run: python advanced_traffic_loader.py
+      run: python3 advanced_traffic_loader.py
       env:
         CI_MODE: "true"
+
 
